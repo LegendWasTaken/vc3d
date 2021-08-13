@@ -5,10 +5,12 @@
 #include <fstream>
 #include <cmath>
 
+#include <tracy/Tracy.hpp>
 #include <glm/common.hpp>
 
 #include <nbt/nbt.h>
 #include <zlib-ng.h>
+#include <iostream>
 
 namespace vx3d::loader
 {
@@ -16,56 +18,48 @@ namespace vx3d::loader
     {
         [[nodiscard]] inline std::vector<std::uint8_t> read_binary(const std::string &path)
         {
+            ZoneScopedN("Loader::read_binary");
             std::ifstream file(path, std::ios::binary);
 
-            // Stop eating new lines in binary mode!!!
             file.unsetf(std::ios::skipws);
 
             const auto empty = file.peek() == std::ifstream::traits_type::eof();
+            if (empty) return {};
 
-            // get its size:
             std::streampos fileSize;
 
             file.seekg(0, std::ios::end);
             fileSize = file.tellg();
             file.seekg(0, std::ios::beg);
 
-            // reserve capacity
             std::vector<std::uint8_t> vec;
             vec.reserve(fileSize);
 
-            // read the data:
             vec.insert(
               vec.begin(),
-              std::istream_iterator<BYTE>(file),
-              std::istream_iterator<BYTE>());
+              std::istream_iterator<std::uint8_t>(file),
+              std::istream_iterator<std::uint8_t>());
 
             return vec;
         }
 
-        struct region_location
-        {
-            struct entry
-            {
-                int offset_0 : 3;
-                int size_0 : 1;
-                int offset_1 : 3;
-                int size_1 : 1;
-            };
-        };
-
         struct chunk_location
         {
             std::uint8_t  size;
-            std::uint32_t x;
-            std::uint32_t z;
             std::uint32_t offset;
             std::uint32_t time_stamp;
+
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return size != std::numeric_limits<std::uint8_t>::max() ||
+                  offset != std::numeric_limits<std::uint32_t>::max();
+            }
         };
 
         inline std::array<chunk_location, 1024>
           read_data_table(const std::vector<std::uint8_t> &file_data)
         {
+            ZoneScopedN("Loader::read_data_table");
             auto locations = std::array<chunk_location, 1024>();
 
             for (auto i = 0; i < 1024; i++)
@@ -84,20 +78,16 @@ namespace vx3d::loader
                   file_data[i * 4 + 3 + 4096],
                 });
 
-                const auto offset = ((bytes[0] << 16) | (bytes[1] << 8) | (bytes[2])) / 4;
+                const auto offset = ((bytes[0] << 16) | (bytes[1] << 8) | (bytes[2]));
 
                 locations[i].time_stamp = (time_stamp_bytes[0] << 24) |
                   (time_stamp_bytes[1]) << 16 | (time_stamp_bytes[2] << 8) | time_stamp_bytes[3];
                 locations[i].size   = bytes[3];
-                locations[i].x      = offset & 31;
-                locations[i].z      = offset >> 5;
-                locations[i].offset = offset * 4;
+                locations[i].offset = offset;
 
-                if (offset == 0 && locations[i].size == 0)
+                if (offset == 0 || locations[i].size == 0)
                 {
                     locations[i].size       = std::numeric_limits<std::uint8_t>::max();
-                    locations[i].x          = std::numeric_limits<std::uint32_t>::max();
-                    locations[i].z          = std::numeric_limits<std::uint32_t>::max();
                     locations[i].time_stamp = std::numeric_limits<std::uint32_t>::max();
                     locations[i].offset     = std::numeric_limits<std::uint32_t>::max();
                 }
@@ -106,36 +96,68 @@ namespace vx3d::loader
             return locations;
         }
 
+        inline void
+          read_chunk(const chunk_location &location, const std::vector<std::uint8_t> &file)
+        {
+            ZoneScopedN("Loader::read_chunk");
+
+            const auto index = location.offset * 4096;
+
+            // Keep running
+            const auto header = std::array<std::uint32_t, 5>({ file[index + 0],
+                                                               file[index + 1],
+                                                               file[index + 2],
+                                                               file[index + 3],
+                                                               file[index + 4] });
+
+            const auto length =
+              ((header[0] << 24) | (header[1]) << 16 | (header[2] << 8) | header[3]);
+            const auto compression_scheme = header[4];
+            if (compression_scheme != 2)    // If it's not zlib... oh man
+                throw std::exception("Invalid compress scheme");
+
+            auto chunk_data = std::vector<std::byte>(length - 1);
+            std::memcpy(chunk_data.data(), &file[index + 5], length - 1);
+
+            auto buffer =
+              vx3d::byte_buffer<bit_endianness::big>(chunk_data.data(), length - 1, true);
+            auto node = nbt::node::read(buffer);
+        }
+
         inline std::vector<std::array<std::uint32_t, 4096>>
           read_chunks(const std::vector<std::uint8_t> &chunks)
         {
+            ZoneScopedN("Loader::read_chunks");
+
+            auto previous_length = 0;
+            auto previous_index  = 0;
+
             auto current_index = size_t(0);
-//            while (true)
+            while (current_index < chunks.size())
             {
                 // Keep running
-                const auto header = std::array<std::uint32_t, 5>({
-                  chunks[current_index + 0],
-                  chunks[current_index + 1],
-                  chunks[current_index + 2],
-                  chunks[current_index + 3],
-                  chunks[current_index + 4]});
+                const auto header = std::array<std::uint32_t, 5>({ chunks[current_index + 0],
+                                                                   chunks[current_index + 1],
+                                                                   chunks[current_index + 2],
+                                                                   chunks[current_index + 3],
+                                                                   chunks[current_index + 4] });
 
                 const auto length =
-                  (header[0] << 24) | (header[1]) << 16 | (header[2] << 8) | header[3];
+                  ((header[0] << 24) | (header[1]) << 16 | (header[2] << 8) | header[3]);
                 const auto compression_scheme = header[4];
-                assert(compression_scheme == 2); // If it's not zlib... oh man
+                assert(compression_scheme == 2);    // If it's not zlib... oh man
 
-                auto chunk_data = std::vector<std::byte>(length);
-                std::memcpy(chunk_data.data(), &chunks[current_index + 5], length);
+                auto chunk_data = std::vector<std::byte>(length - 1);
+                std::memcpy(chunk_data.data(), &chunks[current_index + 5], length - 1);
 
-                auto buffer = vx3d::byte_buffer<bit_endianness::big>(chunk_data.data(), length, true);
+                auto buffer =
+                  vx3d::byte_buffer<bit_endianness::big>(chunk_data.data(), length - 1, true);
                 auto node = nbt::node::read(buffer);
 
-                const auto root = node.get<std::vector<nbt::node>>();
+                previous_length = length;
+                previous_index  = current_index;
 
-
-                const auto five = 5;
-
+                current_index += 4096 * ((length / 4096) + 1);
             }
 
             return {};
@@ -143,21 +165,31 @@ namespace vx3d::loader
 
         inline void read_region_file(const std::filesystem::path &file)
         {
-            auto file_data      = read_binary(file.string());
-            auto location_table = read_data_table(file_data);
-
-            const auto chunk_data =
-              std::vector<std::uint8_t>(file_data.begin() + 8192, file_data.end());
-            const auto chunks = read_chunks(chunk_data);
-
-            auto entry_regions = std::array<region_location::entry, 512>();
-            auto after         = 0;
+            ZoneScopedN("Loader::read_region_file");
+            auto file_data = read_binary(file.string());
+            auto chunks_read = 0;
+            if (!file_data.empty())
+            {
+                const auto location_table = read_data_table(file_data);
+                for (auto i = 0; i < location_table.size(); i++)
+                {
+                    const auto location = location_table[i];
+                    if (location.valid())
+                    {
+                        read_chunk(location, file_data);
+                        chunks_read++;
+                    }
+                }
+            }
+            std::cout << "Chunks read: " << chunks_read << std::endl;
+            auto after = 0;
         }
 
     }    // namespace detail
 
     inline void load_world(const std::filesystem::path &directory)
     {
+        ZoneScopedN("Loader::load_world");
         const auto region_directory = directory / "region";
 
         auto region_files = std::vector<std::filesystem::path>();

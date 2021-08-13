@@ -1,9 +1,22 @@
 cmake_minimum_required(VERSION 3.19)
 project(vx3d)
 
+option(VX3D_USE_TRACY "" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(external)
+
+if (CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(STATUS "Using clang-cl options (MSVC interface)")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /arch:AVX /MT /W4 /EHa /EHs")
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(STATUS "Using Clang/GCC compiler options")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    if ((CMAKE_BUILD_TYPE MATCHES Release) OR (CMAKE_BUILD_TYPE MATCHES RelWithDbgInfo))
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+    endif ()
+endif ()
 
 add_executable(vx3d
         source/main.cpp
@@ -21,8 +34,19 @@ add_executable(vx3d
 
         source/loader/minecraft_loader.h
         source/nbt/nbt.cpp
-        source/cursor.h source/byte_buffer.h)
+        source/cursor.h source/byte_buffer.h
+
+        source/tracy/TracyClient.cpp
+        )
 
 target_include_directories(vx3d PUBLIC source external)
 target_link_libraries(vx3d PUBLIC glfw zlib glm)
-target_compile_definitions(vx3d PUBLIC -DGLFW_INCLUDE_NONE)
+
+if (VX3D_USE_TRACY)
+    message("Tracy has been enabled")
+    set(VX3D_TRACY_MACRO -DTRACY_ENABLE)
+else ()
+    set(VX3D_TRACY_MACRO "")
+endif ()
+
+target_compile_definitions(vx3d PUBLIC -D__STDC_CONSTANT_MACROS -DGLFW_INCLUDE_NONE ${VX3D_TRACY_MACRO} -DNOMINMAX)

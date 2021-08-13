@@ -5,6 +5,7 @@
 #include <array>
 #include <algorithm>
 #include <zlib-ng.h>
+#include <tracy/Tracy.hpp>
 
 namespace vx3d
 {
@@ -27,9 +28,10 @@ namespace vx3d
         // This method will decompress the internal buffer
         void _decompress()
         {
+            ZoneScopedN("ByteBuffer::decompress")
             auto decompressed_data = std::vector<std::byte>();
 
-            const std::uint32_t CHUNK = 16384;
+            const std::uint32_t CHUNK = 16384 * 16;
             int                 ret;
             zng_stream          stream;
             stream.zalloc                    = Z_NULL;

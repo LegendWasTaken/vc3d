@@ -19,6 +19,7 @@ namespace {
 }    // namespace
 
 vx3d::nbt::node vx3d::nbt::node::read(byte_buffer &buffer) {
+    ZoneScopedN("nbt::node::read");
     return _read_node(buffer);
 }
 

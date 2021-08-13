@@ -2,6 +2,7 @@
 
 vx3d::ui::display::display(std::uint16_t width, std::uint16_t height) :
         _width(width), _height(height) {
+    ZoneScopedN("Display Creation");
     glfwInit();
 
     glfwInitHint(GLFW_VERSION_MAJOR, 4);
@@ -60,6 +61,7 @@ void vx3d::ui::display::render() const noexcept {
 
                     for (const auto &directory : std::filesystem::directory_iterator(minecraft_directory)) {
                         if (ImGui::MenuItem(directory.path().stem().string().c_str())) {
+
                             loader::load_world(directory);
                         }
                     }

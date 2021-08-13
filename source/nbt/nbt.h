@@ -68,7 +68,6 @@ namespace vx3d::nbt {
             }
             return {};
         }
-
     };
 
 }
