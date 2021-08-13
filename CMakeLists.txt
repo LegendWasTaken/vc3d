@@ -37,7 +37,7 @@ add_executable(vx3d
         source/cursor.h source/byte_buffer.h
 
         source/tracy/TracyClient.cpp
-        )
+        source/thread_pool.cpp source/thread_pool.h)
 
 target_include_directories(vx3d PUBLIC source external)
 target_link_libraries(vx3d PUBLIC glfw zlib glm)

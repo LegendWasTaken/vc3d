@@ -124,50 +124,10 @@ namespace vx3d::loader
             auto node = nbt::node::read(buffer);
         }
 
-        inline std::vector<std::array<std::uint32_t, 4096>>
-          read_chunks(const std::vector<std::uint8_t> &chunks)
-        {
-            ZoneScopedN("Loader::read_chunks");
-
-            auto previous_length = 0;
-            auto previous_index  = 0;
-
-            auto current_index = size_t(0);
-            while (current_index < chunks.size())
-            {
-                // Keep running
-                const auto header = std::array<std::uint32_t, 5>({ chunks[current_index + 0],
-                                                                   chunks[current_index + 1],
-                                                                   chunks[current_index + 2],
-                                                                   chunks[current_index + 3],
-                                                                   chunks[current_index + 4] });
-
-                const auto length =
-                  ((header[0] << 24) | (header[1]) << 16 | (header[2] << 8) | header[3]);
-                const auto compression_scheme = header[4];
-                assert(compression_scheme == 2);    // If it's not zlib... oh man
-
-                auto chunk_data = std::vector<std::byte>(length - 1);
-                std::memcpy(chunk_data.data(), &chunks[current_index + 5], length - 1);
-
-                auto buffer =
-                  vx3d::byte_buffer<bit_endianness::big>(chunk_data.data(), length - 1, true);
-                auto node = nbt::node::read(buffer);
-
-                previous_length = length;
-                previous_index  = current_index;
-
-                current_index += 4096 * ((length / 4096) + 1);
-            }
-
-            return {};
-        }
-
         inline void read_region_file(const std::filesystem::path &file)
         {
             ZoneScopedN("Loader::read_region_file");
             auto file_data = read_binary(file.string());
-            auto chunks_read = 0;
             if (!file_data.empty())
             {
                 const auto location_table = read_data_table(file_data);
@@ -175,14 +135,9 @@ namespace vx3d::loader
                 {
                     const auto location = location_table[i];
                     if (location.valid())
-                    {
                         read_chunk(location, file_data);
-                        chunks_read++;
-                    }
                 }
             }
-            std::cout << "Chunks read: " << chunks_read << std::endl;
-            auto after = 0;
         }
 
     }    // namespace detail
