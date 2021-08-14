@@ -10,6 +10,8 @@
 #include <queue>
 #include <condition_variable>
 
+#include <tracy/Tracy.hpp>
+
 namespace vx3d
 {
     class thread_pool
@@ -19,12 +21,16 @@ namespace vx3d
 
         ~thread_pool();
 
-        void wait_on_tasks(const std::vector<std::function<void()>> &tasks);
+        void fork_join(const std::vector<std::function<void()>> &tasks);
+
+        void submit_task(const std::function<void()> &task);
+
+        void submit_tasks(const std::vector<std::function<void()>> &tasks);
 
     private:
         [[nodiscard]] std::optional<std::function<void()>> _next_task();
 
-        std::atomic<bool> _should_work { true };
+        std::atomic<bool> _should_work = true;
         std::atomic<uint32_t> _tasks_submitted = 0;
         std::atomic<uint32_t> _tasks_done = 0;
 

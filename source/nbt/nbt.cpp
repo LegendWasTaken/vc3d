@@ -71,11 +71,7 @@ void vx3d::nbt::node::_read_value(byte_buffer &buffer, vx3d::nbt::node &node) {
             auto array_data = std::vector<std::int8_t>(array_length);
             std::generate(array_data.begin(), array_data.end(), [&buffer](){ return buffer.read_u8(); });
 
-            // Note - This CTOR doesn't only reserve, but also creates. Be careful...
-            auto byte_vector = std::vector<std::int8_t>(array_length);
-            for (auto i = 0; i < array_length; i++) byte_vector[i] = array_data[i];
-
-            node._value = byte_vector;
+            node._value = array_data;
             break;
         }
         case TagType::STRING:
@@ -107,11 +103,7 @@ void vx3d::nbt::node::_read_value(byte_buffer &buffer, vx3d::nbt::node &node) {
             auto array_data = std::vector<std::int32_t>(array_length);
             std::generate(array_data.begin(), array_data.end(), [&buffer](){ return buffer.read_i32(); });
 
-            // Note - This CTOR doesn't only reserve, but also creates. Be careful...
-            auto byte_vector = std::vector<std::int32_t>(array_length);
-            for (auto i = 0; i < array_length; i++) byte_vector[i] = array_data[i];
-
-            node._value = byte_vector;
+            node._value = array_data;
             break;
         }
         case TagType::LONG_ARRAY: {
@@ -119,11 +111,7 @@ void vx3d::nbt::node::_read_value(byte_buffer &buffer, vx3d::nbt::node &node) {
             auto array_data = std::vector<std::int64_t>(array_length);
             std::generate(array_data.begin(), array_data.end(), [&buffer](){ return buffer.read_i64(); });
 
-            // Note - This CTOR doesn't only reserve, but also creates. Be careful...
-            auto byte_vector = std::vector<std::int64_t>(array_length);
-            for (auto i = 0; i < array_length; i++) byte_vector[i] = array_data[i];
-
-            node._value = byte_vector;
+            node._value = array_data;
             break;
         }
     }

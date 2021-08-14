@@ -2,6 +2,7 @@
 
 vx3d::thread_pool::thread_pool(std::uint32_t thread_count)
 {
+    ZoneScopedN("ThreadPool::creation")
     _threads.reserve(thread_count);
     for (auto i = 0; i < thread_count; i++)
     {
@@ -37,7 +38,7 @@ vx3d::thread_pool::~thread_pool()
     for (auto &thread : _threads) thread.join();
 }
 
-void vx3d::thread_pool::wait_on_tasks(const std::vector<std::function<void()>> &tasks)
+void vx3d::thread_pool::fork_join(const std::vector<std::function<void()>> &tasks)
 {
     _tasks_submitted = tasks.size();
     {
@@ -57,6 +58,24 @@ void vx3d::thread_pool::wait_on_tasks(const std::vector<std::function<void()>> &
         _tasks_submitted = 0;
         _tasks_done      = 0;
     }
+}
+
+void vx3d::thread_pool::submit_task(const std::function<void()> &task)
+{
+    {
+        std::lock_guard lock(_queue_lock);
+        _tasks.push(task);
+    }
+
+    _work_conditional.notify_one();
+}
+
+void vx3d::thread_pool::submit_tasks(const std::vector<std::function<void()>> &tasks)
+{
+    for (const auto &task : tasks)
+        _tasks.push(task);
+
+    _work_conditional.notify_all();
 }
 
 std::optional<std::function<void()>> vx3d::thread_pool::_next_task()
