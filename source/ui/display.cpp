@@ -109,7 +109,7 @@ void vx3d::ui::display::render(vx3d::world_loader &world_loader)
     {
         auto &io = ImGui::GetIO();
         current_zoom += io.MouseWheel * -0.05;
-        current_zoom = glm::max(0.0f, current_zoom);
+//        current_zoom = glm::max(1.0f, current_zoom);
 
         if (ImGui::IsMouseDown(0))
         {
@@ -118,6 +118,7 @@ void vx3d::ui::display::render(vx3d::world_loader &world_loader)
             delta.x /= 1920;
             delta.y /= 1040;
             delta *= 2;
+            delta *= current_zoom;
 
             current_translation.x += delta.x;
             current_translation.y += delta.y;
