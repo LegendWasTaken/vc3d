@@ -2,68 +2,29 @@
 
 vx3d::thread_pool::thread_pool(std::uint32_t thread_count)
 {
-    ZoneScopedN("ThreadPool::creation")
-    _threads.reserve(thread_count);
+    ZoneScopedN("ThreadPool::creation") _threads.reserve(thread_count);
     for (auto i = 0; i < thread_count; i++)
     {
-        _threads.emplace_back([this] {
-          while (_should_work)
-          {
-              {
-                  std::unique_lock lock(_work_lock);
-                  _work_conditional.wait(lock);
-              }
-              auto task = _next_task();
-              while (task.has_value())
-              {
-                  task.value()();
-                  task = _next_task();
-              }
-          }
-        });
+        _threads.emplace_back([this] { _thread_task(); });
     }
 }
 
 vx3d::thread_pool::~thread_pool()
 {
-    _should_work = false;
-    {
-        std::lock_guard lock(_queue_lock);
-        while (!_tasks.empty()) _tasks.pop();
-    }
+    ZoneScopedN("ThreadPool::destruction");
     {
         std::lock_guard lock(_work_lock);
-        _work_conditional.notify_all();
-    }
-    for (auto &thread : _threads) thread.join();
-}
-
-void vx3d::thread_pool::fork_join(const std::vector<std::function<void()>> &tasks)
-{
-    _tasks_submitted = tasks.size();
-    {
-        std::lock_guard lock(_queue_lock);
-        for (const auto &task : tasks)
-            _tasks.push([task, this]() {
-              task();
-              if (_tasks_submitted <= ++_tasks_done)
-                  _finished_conditional.notify_all();
-            });
+        _tasks.push({});
     }
     _work_conditional.notify_all();
-
-    {
-        std::unique_lock lock(_finished_lock);
-        _finished_conditional.wait(lock);
-        _tasks_submitted = 0;
-        _tasks_done      = 0;
-    }
+    for (auto &thread : _threads) thread.join();
 }
 
 void vx3d::thread_pool::submit_task(const std::function<void()> &task)
 {
+    ZoneScopedN("ThreadPool::submit_task");
     {
-        std::lock_guard lock(_queue_lock);
+        std::lock_guard lock(_work_lock);
         _tasks.push(task);
     }
 
@@ -72,22 +33,32 @@ void vx3d::thread_pool::submit_task(const std::function<void()> &task)
 
 void vx3d::thread_pool::submit_tasks(const std::vector<std::function<void()>> &tasks)
 {
-    for (const auto &task : tasks)
-        _tasks.push(task);
+    ZoneScopedN("ThreadPool::submit_tasks");
+    {
+        std::lock_guard lock(_work_lock);
+        for (const auto &task : tasks) _tasks.push(task);
+    }
 
     _work_conditional.notify_all();
 }
 
 std::optional<std::function<void()>> vx3d::thread_pool::_next_task()
 {
-    std::lock_guard guard(_queue_lock);
+    ZoneScopedN("ThreadPool::_next_task");
+    std::unique_lock lock(_work_lock);
+    while (_tasks.empty()) _work_conditional.wait(lock);
 
-    while (!_tasks.empty())
+    if (_tasks.front())
     {
-        auto val = _tasks.front();
+        auto task = _tasks.front();
         _tasks.pop();
-        return val;
+        return task;
     }
 
     return {};
+}
+
+void vx3d::thread_pool::_thread_task()
+{
+    while (auto task = _next_task()) task.value()();
 }

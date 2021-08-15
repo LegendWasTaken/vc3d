@@ -86,9 +86,8 @@ namespace vx3d
 
     public:
         explicit byte_buffer(void *data, size_t size, bool compressed = false)
-            : _compressed(compressed), _cursor(0), _size(size)
+            : _compressed(compressed), _cursor(0), _size(size), _data(std::make_unique<std::byte[]>(size))
         {
-            _data = std::make_unique<std::byte[]>(_size);
             std::memcpy(_data.get(), data, _size);
             if (_compressed)
                 _decompress();

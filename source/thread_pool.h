@@ -21,8 +21,6 @@ namespace vx3d
 
         ~thread_pool();
 
-        void fork_join(const std::vector<std::function<void()>> &tasks);
-
         void submit_task(const std::function<void()> &task);
 
         void submit_tasks(const std::vector<std::function<void()>> &tasks);
@@ -30,16 +28,11 @@ namespace vx3d
     private:
         [[nodiscard]] std::optional<std::function<void()>> _next_task();
 
-        std::atomic<bool> _should_work = true;
-        std::atomic<uint32_t> _tasks_submitted = 0;
-        std::atomic<uint32_t> _tasks_done = 0;
+        void _thread_task();
 
         std::mutex _work_lock;
-        std::mutex _queue_lock;
-        std::mutex _finished_lock;
 
         std::condition_variable _work_conditional;
-        std::condition_variable _finished_conditional;
 
         std::queue<std::function<void()>> _tasks;
         std::vector<std::thread>          _threads;

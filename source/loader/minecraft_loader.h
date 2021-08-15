@@ -6,96 +6,19 @@
 #include <iostream>
 #include <cmath>
 
-#include <glm/common.hpp>
-
-#include <tracy/Tracy.hpp>
 #include <zlib-ng.h>
 
-#include <nbt/nbt.h>
+#include <glm/common.hpp>
+#include <daw/daw_memory_mapped_file.h>
+#include <tracy/Tracy.hpp>
+
 #include <thread_pool.h>
-#include <Windows.h>
+#include <nbt/nbt.h>
 
 namespace vx3d::loader
 {
     namespace detail
     {
-        [[nodiscard]] inline std::vector<std::uint8_t> read_binary(const std::string &path)
-        {
-            ZoneScopedN("Loader::read_binary");
-            std::ifstream file(path, std::ios::binary);
-
-            file.unsetf(std::ios::skipws);
-
-            const auto empty = file.peek() == std::ifstream::traits_type::eof();
-            if (empty) return {};
-
-            std::streampos fileSize;
-
-            file.seekg(0, std::ios::end);
-            fileSize = file.tellg();
-            file.seekg(0, std::ios::beg);
-
-            std::vector<std::uint8_t> vec;
-            vec.reserve(fileSize);
-
-            vec.insert(
-              vec.begin(),
-              std::istream_iterator<std::uint8_t>(file),
-              std::istream_iterator<std::uint8_t>());
-
-            return vec;
-        }
-        [[nodiscard]] inline std::vector<std::uint8_t> read_binary_fopen(const std::string &path)
-        {
-            ZoneScopedN("Loader::read_binary_fopen");
-            std::vector<uint8_t> result;
-
-            FILE * file = fopen(path.c_str(), "rb");
-            if (file == nullptr)
-                return {};
-
-            fseek(file, 0, SEEK_END);
-            size_t const file_size = _ftelli64(file);
-            fseek(file, 0, SEEK_SET);
-
-            result.resize(file_size);
-            fread(result.data(), sizeof(char), file_size, file);
-
-            fclose(file);
-            return result;
-        }
-
-        [[nodiscard]] inline std::vector<std::uint8_t> read_binary_windows_read(const std::string &path)
-        {
-            ZoneScopedN("Loader::read_binary_window_read");
-            std::vector<uint8_t> result;
-            HANDLE const file = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-            assert(file != INVALID_HANDLE_VALUE);
-
-            LARGE_INTEGER file_size;
-            GetFileSizeEx(file, &file_size);
-
-            result.resize(file_size.QuadPart);
-            DWORD bytes_read = 0;
-            ReadFile(file, result.data(), DWORD(file_size.QuadPart), &bytes_read, nullptr);
-            CloseHandle(file);
-            return result;
-        }
-
-        inline auto load_whole_filer(const std::string &path) -> std::vector<uint8_t>
-        {
-            ZoneScopedN("Loader::fstream_read");
-            std::vector<uint8_t> result;
-            auto file = std::ifstream(path, std::ios::binary);
-            assert(file.is_open());
-            file.seekg(0, std::ios::end);
-            auto const file_size = file.tellg();
-            file.seekg(0, std::ios::beg);
-            result.resize(file_size);
-            file.read(reinterpret_cast<char *>(result.data()), file_size);
-            return result;
-        }
-
         struct chunk_location
         {
             std::uint8_t  size;
@@ -110,7 +33,7 @@ namespace vx3d::loader
         };
 
         inline std::array<chunk_location, 1024>
-          read_data_table(const std::vector<std::uint8_t> &file_data)
+          read_data_table(const daw::filesystem::memory_mapped_file_t<std::uint8_t> &file_data)
         {
             ZoneScopedN("Loader::read_data_table");
             auto locations = std::array<chunk_location, 1024>();
@@ -149,8 +72,9 @@ namespace vx3d::loader
             return locations;
         }
 
-        inline void
-          read_chunk(const chunk_location &location, const std::vector<std::uint8_t> &file)
+        inline void read_chunk(
+          const chunk_location &                                     location,
+          const daw::filesystem::memory_mapped_file_t<std::uint8_t> &file)
         {
             ZoneScopedN("Loader::read_chunk");
 
@@ -177,26 +101,29 @@ namespace vx3d::loader
             auto node = nbt::node::read(buffer);
         }
 
-        inline void read_region_file(const std::filesystem::path &file, vx3d::thread_pool *thread_pool)
+        inline int
+          read_region_file(const std::filesystem::path &file, vx3d::thread_pool *thread_pool)
         {
             ZoneScopedN("Loader::read_region_file");
 
-            const auto file_data_a = std::make_shared<std::vector<std::uint8_t>>(read_binary(file.string()));
-            const auto file_data_b = std::make_shared<std::vector<std::uint8_t>>(load_whole_filer(file.string()));
-            const auto file_data_c = std::make_shared<std::vector<std::uint8_t>>(read_binary_fopen(file.string()));
-            const auto file_data_d = std::make_shared<std::vector<std::uint8_t>>(read_binary_windows_read(file.string()));
-//            if (!file_data->empty())
-//            {
-//                const auto location_table = read_data_table(*file_data);
-//                for (auto i = 0; i < location_table.size(); i++)
-//                {
-//                    const auto location = location_table[i];
-//                    if (location.valid())
-//                        thread_pool->submit_task([location, file_data]{
-//                          read_chunk(location, *file_data);
-//                        });
-//                }
-//            }
+            const auto file_handle =
+              std::make_shared<daw::filesystem::memory_mapped_file_t<std::uint8_t>>(file.string());
+            auto chunks_read = 0;
+            if (file_handle->size() != 0)
+            {
+                const auto location_table = read_data_table(*file_handle);
+                for (auto i = 0; i < location_table.size(); i++)
+                {
+                    const auto location = location_table[i];
+                    if (location.valid())
+                    {
+                        chunks_read++;
+                        thread_pool->submit_task([location, file_handle]
+                                                 { read_chunk(location, *file_handle); });
+                    }
+                }
+            }
+            return chunks_read;
         }
 
     }    // namespace detail
@@ -204,18 +131,18 @@ namespace vx3d::loader
     inline void load_world(const std::filesystem::path &directory)
     {
         ZoneScopedN("Loader::load_world");
-        auto thread_pool = vx3d::thread_pool(16);
+        auto       thread_pool      = vx3d::thread_pool(16);
         const auto region_directory = directory / "region";
 
         auto region_files = std::vector<std::filesystem::path>();
 
+        auto chunks_read = 0;
         for (const auto &file : std::filesystem::directory_iterator(region_directory))
-            detail::read_region_file(file, &thread_pool);
+            chunks_read += detail::read_region_file(file, &thread_pool);
 
         //        for (const auto &file : region_files)
         //            detail::read_region_file(file);
-
-        const auto b = 5;
+        std::cout << chunks_read << std::endl;
     }
 
 }    // namespace vx3d::loader
