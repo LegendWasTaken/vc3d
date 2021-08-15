@@ -125,7 +125,7 @@ namespace vx3d::loader
     inline void load_world(const std::filesystem::path &directory)
     {
         ZoneScopedN("Loader::load_world");
-//        auto       thread_pool      = vx3d::thread_pool(16);
+        auto       thread_pool      = vx3d::thread_pool(16);
         const auto region_directory = directory / "region";
 
         auto region_files = std::vector<std::filesystem::path>();

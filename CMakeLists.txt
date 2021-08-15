@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 project(vx3d)
 
 option(VX3D_USE_TRACY "" OFF)
+option(VX3D_USE_RELATIVE_PATH "" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -37,7 +38,7 @@ add_executable(vx3d
         source/cursor.h source/byte_buffer.h
 
         source/tracy/TracyClient.cpp
-        source/thread_pool.cpp source/thread_pool.h source/loader/world_loader.cpp source/loader/world_loader.h)
+        source/thread_pool.cpp source/thread_pool.h source/loader/world_loader.cpp source/loader/world_loader.h source/util/opengl.h)
 
 target_include_directories(vx3d PUBLIC source external)
 target_link_libraries(vx3d PUBLIC glfw zlib glm)
@@ -49,4 +50,12 @@ else ()
     set(VX3D_TRACY_MACRO "")
 endif ()
 
-target_compile_definitions(vx3d PUBLIC -D__STDC_CONSTANT_MACROS -DGLFW_INCLUDE_NONE ${VX3D_TRACY_MACRO} -DNOMINMAX)
+if (VX3D_USE_RELATIVE_PATH)
+    message("Using relative asset path")
+    set(VX3D_RELATIVE_PATH "./assets/")
+else()
+    message("Using none-relative asset path")
+    set(VX3D_RELATIVE_PATH "${CMAKE_SOURCE_DIR}/assets/")
+endif()
+
+target_compile_definitions(vx3d PUBLIC -D__STDC_CONSTANT_MACROS -DGLFW_INCLUDE_NONE ${VX3D_TRACY_MACRO} -DNOMINMAX VX3D_ASSET_PATH="${VX3D_RELATIVE_PATH}")
