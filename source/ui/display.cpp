@@ -29,7 +29,7 @@ bool vx3d::ui::display::should_close() const noexcept {
     return glfwWindowShouldClose(_window);
 }
 
-void vx3d::ui::display::render() const noexcept {
+void vx3d::ui::display::render(vx3d::world_loader &world_loader) const noexcept {
     glClearColor(1.0, 1.0, 1.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -60,10 +60,8 @@ void vx3d::ui::display::render() const noexcept {
                     static auto minecraft_directory = current_directory / ".minecraft" / "saves";
 
                     for (const auto &directory : std::filesystem::directory_iterator(minecraft_directory)) {
-                        if (ImGui::MenuItem(directory.path().stem().string().c_str())) {
-
-                            loader::load_world(directory);
-                        }
+                        if (ImGui::MenuItem(directory.path().stem().string().c_str()))
+                            world_loader.set_world(directory);
                     }
                 } else
                     ImGui::MenuItem("Couldn't find your minecraft installation");

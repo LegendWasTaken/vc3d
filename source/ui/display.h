@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ui/ui_components.h>
-#include <loader/minecraft_loader.h>
+#include <loader/world_loader.h>
 
 #include <cstdint>
 
@@ -15,7 +15,7 @@ namespace vx3d::ui {
 
         [[nodiscard]] bool should_close() const noexcept;
 
-        void render() const noexcept;
+        void render(vx3d::world_loader &world_loader) const noexcept;
 
     private:
         mutable ImGui::FileBrowser _file_browser;
