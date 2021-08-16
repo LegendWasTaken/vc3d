@@ -7,6 +7,7 @@
 #include <array>
 #include <filesystem>
 #include <unordered_set>
+#include <iostream>
 
 #include <glad/glad.h>
 

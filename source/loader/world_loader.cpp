@@ -12,11 +12,11 @@ vx3d::world_loader::world_loader() : _thread_pool(std::thread::hardware_concurre
 bool vx3d::world_loader::get_chunk(std::int32_t x, std::int32_t z)
 {
     auto guard = std::lock_guard(_loaded_chunks_mutex);
-    auto found = _loaded_chunks.find(hash_pos(x, z)) != _loaded_chunks.end();
+//    auto found = _loaded_chunks.find(hash_pos(x, z)) != _loaded_chunks.end();
 
-    if (!found) _thread_pool.submit_task([this, x, z] { _chunk_load(x, z); });
+//    if (!found) _thread_pool.submit_task([this, x, z] { _chunk_load(x, z); });
 
-    return found;
+    return false;
 }
 
 void vx3d::world_loader::set_world(const std::filesystem::path &world_folder)
