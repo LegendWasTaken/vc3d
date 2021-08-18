@@ -72,29 +72,51 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
     // chunk_x = translation.x >> 4
     // chunk_z = translation.y >> 4
 
-
-    const auto &loaded = loader.loaded_chunks();
     auto indices = std::vector<std::int32_t>(resolution.x * resolution.y, -1);
 
-    // When the zoom is under 16, there will be at least 1 block per chunk
+//    const auto min_x = std::int32_t(((-resolution.x / 2) / current_zoom) - current_translation.x * resolution.x) / 16;
+//    const auto min_z = std::int32_t(((-resolution.y / 2) / current_zoom) - current_translation.y * resolution.y) / 16;
+//    const auto max_x = std::int32_t(((resolution.x / 2) / current_zoom) - current_translation.x * resolution.x) / 16;
+//    const auto max_z = std::int32_t(((resolution.y / 2) / current_zoom) - current_translation.y * resolution.y) / 16;
+    const auto min_x = 0;
+    const auto min_z = 0;
+    const auto max_x = resolution.x / 32;
+    const auto max_z = resolution.y / 32;
+//
+    // Request the chunks we're going to render
 
+    auto chunks = std::vector<vx3d::loader::chunk_location>();
+    chunks.reserve((max_x - min_x) * (max_z - min_z));
+    for (auto x = min_x; x < max_x; x++)
+        for (auto z = min_z; z < max_z; z++)
+            chunks.emplace_back(x, z);
+
+    const auto found = loader.get_locations(chunks);
+
+    // When the zoom is under 16, there will be at least 1 block per chunk
     if (current_zoom < 16)
     {
-        for (auto i = 0; i < loaded.size(); i++)
-        {
-            const auto location = loaded[i];
+        for (auto y = 0; y < resolution.y; y++)
+            for (auto x = 0; x < resolution.x; x++)
+            {
+//                const auto scaled_pos = glm::ivec2((x / current_zoom) - current_translation.x, (y / current_zoom) - current_translation.y);
+                // The chunk position is now this divided by 16
+                const auto chunk_pos = glm::ivec2(x, y) / 16;
 
-            const auto blocks_per_chunk = std::int8_t(16.0f / current_zoom);
-            for (auto y = location.z * 16; y < location.z * 16 + blocks_per_chunk; y++)
-                for (auto x = location.x * 16; x < location.x * 16 + blocks_per_chunk; x++)
-                    indices[x + y * resolution.x] = i;
-        }
+                const auto it = found.find(world_loader::hash_pos(chunk_pos.x, chunk_pos.y));
+                indices[x + y * resolution.x] = it != found.end() ? static_cast<int32_t>(it->second) : -1;
+            }
     }
     else
     {
         // Send chunks per pixels instead of blocks
 
     }
+
+    auto loaded = std::vector<vx3d::loader::chunk_location>();
+    for (const auto &pos : chunks)
+        if (found.find(world_loader::hash_pos(pos.x, pos.z)) != found.end())
+            loaded.push_back(pos);
 
     // Loaded chunks
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _chunk_buffer);

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <atomic>
 
 #include <zlib-ng.h>
 
@@ -19,11 +20,14 @@ namespace vx3d::loader
 {
     struct chunk_location
     {
-        std::uint8_t  size;
-        std::uint32_t offset;
-        std::uint32_t time_stamp;
-        std::int32_t x;
-        std::int32_t z;
+        std::uint8_t  size = 0;
+        std::uint32_t offset = 0;
+        std::uint32_t time_stamp = 0;
+        std::int32_t  x = 0;
+        std::int32_t  z = 0;
+
+        chunk_location() = default;
+        chunk_location(std::int32_t x, std::int32_t z) : x(x), z(z) {}
 
         [[nodiscard]] bool valid() const noexcept
         {
@@ -61,7 +65,7 @@ namespace vx3d::loader
             locations[i].size   = bytes[3];
             locations[i].offset = offset;
             locations[i].x      = offset & 31;
-            locations[i].z      = offset >> 5;
+            locations[i].z      = offset / 32;
 
             if (offset == 0 || locations[i].size == 0)
             {
@@ -95,7 +99,19 @@ namespace vx3d::loader
         std::memcpy(chunk_data.data(), &file[index + 5], length - 1);
 
         auto buffer = vx3d::byte_buffer<bit_endianness::big>(chunk_data.data(), length - 1, true);
-        auto node   = nbt::node::read(buffer);
+
+        static std::atomic<uint32_t> last_size = 0;
+
+        if (length - 1 > last_size)
+        {
+            last_size = length - 1;
+            std::ofstream out(std::string("./test.nbt"), std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char *>(&file[index + 5]), length - 1);
+            out.flush();
+            out.close();
+        }
+
+        auto node = nbt::node::read(buffer);
     }
 
     inline int read_region_file(const std::filesystem::path &file, vx3d::thread_pool *thread_pool)

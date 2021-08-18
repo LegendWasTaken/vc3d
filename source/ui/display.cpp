@@ -53,7 +53,8 @@ void vx3d::ui::display::render(vx3d::world_loader &world_loader, vx3d::renderer 
 
     const auto tab_input = ui::menu_tab_component(_file_browser);
 
-    if (!tab_input.directory.empty()) world_loader.set_world(tab_input.directory);
+//    if (!tab_input.directory.empty()) world_loader.set_world(tab_input.directory);
+    if (!tab_input.directory.empty()) vx3d::loader::load_world(tab_input.directory);
 
     auto window_size = ImGui::GetContentRegionAvail();
 
