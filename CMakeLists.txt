@@ -10,7 +10,7 @@ add_subdirectory(external)
 
 if (CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     message(STATUS "Using clang-cl options (MSVC interface)")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /arch:AVX /MT /W4 /EHa /EHs -fsanitize=address")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /arch:AVX /MT /W4 /EHa /EHs")
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     message(STATUS "Using Clang/GCC compiler options")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
@@ -48,8 +48,6 @@ add_executable(vx3d
 
 target_include_directories(vx3d PUBLIC source external)
 target_link_libraries(vx3d PUBLIC glfw zlib glm)
-
-set (CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 
 if (VX3D_USE_TRACY)
     message("Tracy has been enabled")

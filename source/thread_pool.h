@@ -25,6 +25,8 @@ namespace vx3d
 
         void submit_tasks(const std::vector<std::function<void()>> &tasks);
 
+        void flush();
+
     private:
         [[nodiscard]] std::optional<std::function<void()>> _next_task();
 
@@ -33,6 +35,7 @@ namespace vx3d
         std::mutex _work_lock;
 
         std::condition_variable _work_conditional;
+        std::condition_variable _job_finished_conditional;
 
         std::queue<std::function<void()>> _tasks;
         std::vector<std::thread>          _threads;

@@ -46,6 +46,9 @@ std::optional<std::function<void()>> vx3d::thread_pool::_next_task()
 {
     ZoneScopedN("ThreadPool::_next_task");
     std::unique_lock lock(_work_lock);
+    if (_tasks.empty())
+        _job_finished_conditional.notify_all();
+
     while (_tasks.empty()) _work_conditional.wait(lock);
 
     if (_tasks.front())
@@ -61,4 +64,13 @@ std::optional<std::function<void()>> vx3d::thread_pool::_next_task()
 void vx3d::thread_pool::_thread_task()
 {
     while (auto task = _next_task()) task.value()();
+}
+
+void vx3d::thread_pool::flush()
+{
+    auto guard = std::unique_lock(_work_lock);
+
+    do {
+        _job_finished_conditional.wait(guard);
+    } while (!_tasks.empty());
 }

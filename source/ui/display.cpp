@@ -35,6 +35,7 @@ bool vx3d::ui::display::should_close() const noexcept
 
 void vx3d::ui::display::render(vx3d::world_loader &world_loader, vx3d::renderer &renderer)
 {
+    ZoneScopedN("Display::render");
     glClearColor(1.0, 1.0, 1.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -53,15 +54,10 @@ void vx3d::ui::display::render(vx3d::world_loader &world_loader, vx3d::renderer 
 
     const auto tab_input = ui::menu_tab_component(_file_browser);
 
-//    if (!tab_input.directory.empty()) world_loader.set_world(tab_input.directory);
-    if (!tab_input.directory.empty()) vx3d::loader::load_world(tab_input.directory);
+    if (!tab_input.directory.empty()) world_loader.set_world(tab_input.directory);
 
     auto window_size = ImGui::GetContentRegionAvail();
 
-//    auto loaded = world_loader.loaded_chunks();
-//    loaded.emplace_back(0, 0);
-//    loaded.emplace_back(1, 3);
-//    loaded.emplace_back(1, 4);
     const auto texture = renderer.render(glm::ivec2(window_size.x, window_size.y), world_loader);
 
     ImGui::Image(reinterpret_cast<void *>(texture), ImVec2(1920, 1040));

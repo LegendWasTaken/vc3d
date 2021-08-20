@@ -1,5 +1,16 @@
 #include "renderer.h"
 
+namespace
+{
+    [[nodiscard]] inline std::uint32_t hash_32b(int x, int z)
+    {
+        int hash = 17;
+        hash     = 31 * hash + x;
+        hash     = 31 * hash + z;
+        return hash;
+    }
+}    // namespace
+
 vx3d::renderer::renderer()
 {
     glGenTextures(1, &_target_texture);
@@ -19,17 +30,11 @@ vx3d::renderer::renderer()
 
 GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &loader)
 {
+    ZoneScopedN("Renderer::render");
+    const auto res = resolution - resolution % 2;
+
     glBindTexture(GL_TEXTURE_2D, _target_texture);
-    glTexImage2D(
-      GL_TEXTURE_2D,
-      0,
-      GL_RGBA8,
-      resolution.x,
-      resolution.y,
-      0,
-      GL_RGBA,
-      GL_UNSIGNED_BYTE,
-      nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, res.x, res.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     // Texture resized, now we need to render to it
 
     glUseProgram(_compute_program);
@@ -47,8 +52,6 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
         if (ImGui::IsMouseDown(0))
         {
             auto delta = glm::vec2(io.MouseDelta.x, io.MouseDelta.y) * glm::vec2(-1, -1);
-            delta.x /= resolution.x / 2;
-            delta.y /= resolution.y / 2;
             delta *= current_zoom;
 
             current_translation.x += delta.x;
@@ -56,96 +59,77 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
         }
     }
 
-    glUniform2i(glGetUniformLocation(_compute_program, "scene_size"), resolution.x, resolution.y);
+    const auto chunk_count = glm::ivec2(
+      (std::int32_t((res.x + (16 - (res.x % 16)))) * current_zoom) / 16,
+      (std::int32_t((res.y + (16 - (res.y % 16)))) * current_zoom) / 16);
+
+    glUniform2i(glGetUniformLocation(_compute_program, "scene_size"), res.x, res.y);
+    glUniform2i(glGetUniformLocation(_compute_program, "chunk_count"), chunk_count.x, chunk_count.y);
     glUniform1f(glGetUniformLocation(_compute_program, "zoom"), current_zoom);
     glUniform2f(
       glGetUniformLocation(_compute_program, "translation"),
       current_translation.x,
       current_translation.y);
 
-    // A single chunk is 16x16 pixels, 1 pixel per block (theoretically)
-    // This means, with a zoom of 1, the amount of chunks will be
-    // ceil(pixel_size.x / 16) * ceil(pixel_size.y / 16)
+    ZoneNamedN(a, "Renderer::render::load_chunks", true);
 
-    // With the origin of them being at 0,0 + translation
-    // the start of the chunks will be that block, the chunk will be
-    // chunk_x = translation.x >> 4
-    // chunk_z = translation.y >> 4
-
-    auto indices = std::vector<std::int32_t>(resolution.x * resolution.y, -1);
-
-//    const auto min_x = std::int32_t(((-resolution.x / 2) / current_zoom) - current_translation.x * resolution.x) / 16;
-//    const auto min_z = std::int32_t(((-resolution.y / 2) / current_zoom) - current_translation.y * resolution.y) / 16;
-//    const auto max_x = std::int32_t(((resolution.x / 2) / current_zoom) - current_translation.x * resolution.x) / 16;
-//    const auto max_z = std::int32_t(((resolution.y / 2) / current_zoom) - current_translation.y * resolution.y) / 16;
-    const auto min_x = 0;
-    const auto min_z = 0;
-    const auto max_x = resolution.x / 32;
-    const auto max_z = resolution.y / 32;
-//
     // Request the chunks we're going to render
-
     auto chunks = std::vector<vx3d::loader::chunk_location>();
-    chunks.reserve((max_x - min_x) * (max_z - min_z));
-    for (auto x = min_x; x < max_x; x++)
-        for (auto z = min_z; z < max_z; z++)
-            chunks.emplace_back(x, z);
+    chunks.reserve(chunk_count.x * chunk_count.y);
 
-    const auto found = loader.get_locations(chunks);
+    const auto chunk_offset = glm::ivec2(current_translation) / 16;
 
-    // When the zoom is under 16, there will be at least 1 block per chunk
-    if (current_zoom < 16)
+    for (auto x = -chunk_count.x / 2; x < chunk_count.x / 2; x++)
+        for (auto z = -chunk_count.y / 2; z < chunk_count.y / 2; z++)
+            chunks.emplace_back(chunk_offset.x + x, chunk_offset.y + z);
+
+    auto found = loader.get_locations(chunks);
+
+    ZoneNamedN(b, "Renderer::render::create_indices", true);
+
+    struct gpu_location_node
     {
-        for (auto y = 0; y < resolution.y; y++)
-            for (auto x = 0; x < resolution.x; x++)
-            {
-//                const auto scaled_pos = glm::ivec2((x / current_zoom) - current_translation.x, (y / current_zoom) - current_translation.y);
-                // The chunk position is now this divided by 16
-                const auto chunk_pos = glm::ivec2(x, y) / 16;
+        int x     = 0;
+        int z     = 0;
+        int empty = true;
+        int pad = 0;
+    };
 
-                const auto it = found.find(world_loader::hash_pos(chunk_pos.x, chunk_pos.y));
-                indices[x + y * resolution.x] = it != found.end() ? static_cast<int32_t>(it->second) : -1;
-            }
-    }
-    else
+    auto hash_map = std::vector<gpu_location_node>(found.size() * 1.7);
+    for (const auto location : found)
     {
-        // Send chunks per pixels instead of blocks
+        auto gpu_location  = gpu_location_node();
+        gpu_location.x     = location.x;
+        gpu_location.z     = location.z;
+        gpu_location.empty = false;
 
+        auto hash = ::hash_32b(location.x, location.z);
+        auto idx  = hash % hash_map.size();
+        while (!hash_map[idx++].empty)
+        {
+            if (idx == hash_map.size())
+                idx = 0;
+        }
+        hash_map[--idx] = gpu_location;
     }
-
-    auto loaded = std::vector<vx3d::loader::chunk_location>();
-    for (const auto &pos : chunks)
-        if (found.find(world_loader::hash_pos(pos.x, pos.z)) != found.end())
-            loaded.push_back(pos);
 
     // Loaded chunks
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, _chunk_buffer);
+    ZoneNamedN(d, "Renderer::render::upload_buffers", true)
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, _chunk_buffer);
     glBufferData(
       GL_SHADER_STORAGE_BUFFER,
-      loaded.size() * sizeof(std::int32_t) * 2,
-      loaded.data(),
+      hash_map.size() * sizeof(std::int32_t) * 4,
+      hash_map.data(),
       GL_DYNAMIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, _chunk_buffer);
 
-    auto index_buffer = GLuint();
-    glGenBuffers(1, &index_buffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, index_buffer);
-    glBufferData(
-      GL_SHADER_STORAGE_BUFFER,
-      indices.size() * sizeof(std::int32_t),
-      indices.data(),
-      GL_DYNAMIC_COPY);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, index_buffer);
-
-    glDispatchCompute(
+    ZoneNamedN(c, "Renderer::render::compute", true) glDispatchCompute(
       static_cast<int>(glm::ceil(resolution.x / 8)),
       static_cast<int>(glm::ceil(resolution.y / 8)),
       1);
 
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
-
-    glDeleteBuffers(1, &index_buffer);
 
     return _target_texture;
 }
