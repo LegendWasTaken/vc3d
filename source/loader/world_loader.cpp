@@ -5,7 +5,7 @@ std::uint64_t vx3d::world_loader::hash_pos(std::int32_t x, std::int32_t z)
     return static_cast<std::uint64_t>(x) << 32 | (static_cast<std::uint64_t>(z) & 0xFFFFFFFF);
 }
 
-vx3d::world_loader::world_loader() : _thread_pool(std::thread::hardware_concurrency())
+vx3d::world_loader::world_loader() : _thread_pool(0)
 {
 }
 

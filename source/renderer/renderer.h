@@ -24,5 +24,11 @@ namespace vx3d
         GLuint _compute_shader;
         GLuint _target_texture;
         GLuint _chunk_buffer;
+        GLuint _index_buffer;
+
+        GLint _uniform_scene_size;
+        GLint _uniform_chunk_count;
+        GLint _uniform_zoom;
+        GLint _uniform_translation;
     };
 }
