@@ -111,6 +111,18 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
             chunks.emplace_back(chunk_offset.x + x, chunk_offset.y + z);
 
     auto found = loader.get_locations(chunks);
+    found.clear();
+    auto loc = vx3d::loader::chunk_location();
+    for (auto i = 1; i < 3; i++)
+        for (auto j = 1; j < 3; j++)
+        {
+            loc.x = i;
+            loc.z = j;
+            found.push_back(loc);
+            loc.x = -i;
+            loc.z = -j;
+            found.push_back(loc);
+        }
 
     ZoneNamedN(b, "Renderer::render::create_indices", true);
 
@@ -143,7 +155,7 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
 
     auto flattened_hash_map = std::vector<gpu_location_node>();
     flattened_hash_map.reserve(found.size());
-    auto hash_map_hash_indices = std::vector<hash_node_entry>(found.size());
+    auto hash_map_hash_indices = std::vector<hash_node_entry>(hash_map.size());
     for (auto i = 0; i < hash_map_hash_indices.size(); i++)
     {
         const auto &current_map = hash_map[i];
@@ -178,8 +190,8 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
 
     ZoneNamedN(c, "Renderer::render::compute", true);
     glDispatchCompute(
-      static_cast<int>(glm::ceil(resolution.x / 32)),
-      static_cast<int>(glm::ceil(resolution.y / 32)),
+      static_cast<int>(glm::ceil(resolution.x / 8)),
+      static_cast<int>(glm::ceil(resolution.y / 8)),
       1);
 
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
