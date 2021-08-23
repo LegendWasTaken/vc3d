@@ -1,0 +1,97 @@
+#version 440
+
+layout (local_size_x = 8, local_size_y = 8) in;
+layout (binding = 0, rgba32f) uniform writeonly image2D image_out;
+
+#define TARGET_PIXEL ivec2(gl_GlobalInvocationID)
+
+#define _IF(x, a, b) lerp(b, a, x)
+
+int WHEN_EQI(int x, int y) { return 1 - abs(sign(x - y)); }
+int WHEN_NEQI(int x, int y) { return abs(sign(x - y)); }
+
+uint WHEN_EQUI(uint x, uint y) { return 1 - abs(sign(x - y)); }
+uint WHEN_NEQUI(uint x, uint y) { return abs(sign(x - y)); }
+
+float WHEN_EQF(float x, float y) { return 1.0 - abs(sign(x - y)); }
+float WHEN_NEQF(float x, float y) { return abs(sign(x - y)); }
+
+uniform ivec2 scene_size;
+uniform ivec2 chunk_count;
+uniform float zoom;
+uniform vec2 translation;
+
+struct chunk_location
+{
+    int x;
+    int z;
+    int empty;
+    int pad;
+};
+layout (std140, binding = 0) buffer ChunkBuffer {
+    chunk_location locations[];
+} chunks;
+
+struct hash_node_entry
+{
+    int begin;
+    int end;
+};
+layout (std140, binding = 1) buffer ChunkIndexBuffer {
+    hash_node_entry entries[];
+} chunk_indices;
+
+uint wang_hash(int seed)
+{
+    seed = (seed ^ 61) ^ (seed >> 16);
+    seed *= 9;
+    seed = seed ^ (seed >> 4);
+    seed *= 0x27d4eb2d;
+    seed = seed ^ (seed >> 15);
+    return seed;
+}
+
+uint hash_pos(int x, int z)
+{
+    return wang_hash(x) ^ wang_hash(z);
+}
+
+uint hash_pos(chunk_location location)
+{
+    return hash_pos(location.x, location.z);
+}
+
+chunk_location get_chunk(int x, int z)
+{
+    if (chunks.locations.length() == 0)
+        return chunk_location(0, 0, 1, 0);
+
+    uint hash = hash_pos(x, z);
+    uint idx = hash % chunk_indices.entries.length();
+
+    hash_node_entry entry = chunk_indices.entries[idx];
+
+    if (entry.begin == -1 && entry.end == -1)
+    return chunk_location(0, 0, 1, 0);
+
+    for (int i = entry.begin; i < entry.end; i++)
+    {
+        chunk_location at = chunks.locations[i];
+        if (at.x == x && at.z == z)
+        return at;
+    }
+    return chunk_location(0, 0, 1, 0);
+}
+
+void main ()
+{
+    if (TARGET_PIXEL.x > scene_size.x || TARGET_PIXEL.y > scene_size.y) return;
+
+    ivec2 chunk_pos = ivec2(
+    (TARGET_PIXEL.x * zoom) + translation.x,
+    (TARGET_PIXEL.y * zoom) + translation.y) / 16 - chunk_count / 2;
+
+    chunk_location at = get_chunk(chunk_pos.x, chunk_pos.y);
+    if (at.empty != 1)
+    imageStore(image_out, TARGET_PIXEL.xy, vec4(1.0));
+}
