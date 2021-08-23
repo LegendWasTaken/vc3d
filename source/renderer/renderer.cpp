@@ -2,7 +2,7 @@
 
 namespace
 {
-    [[nodiscard]] inline std::uint32_t wang_hash(int seed)
+    [[nodiscard]] inline std::int32_t wang_hash(int seed)
     {
         seed = (seed ^ 61) ^ (seed >> 16);
         seed *= 9;
@@ -12,10 +12,7 @@ namespace
         return seed;
     }
 
-    [[nodiscard]] inline std::uint32_t hash_32b(int x, int z)
-    {
-        return wang_hash(x) ^ wang_hash(z);
-    }
+    [[nodiscard]] inline std::int32_t hash_32b(int x, int z) { return wang_hash(x * wang_hash(z)); }
 }    // namespace
 
 vx3d::renderer::renderer()
@@ -111,18 +108,6 @@ GLuint vx3d::renderer::render(const glm::ivec2 &resolution, vx3d::world_loader &
             chunks.emplace_back(chunk_offset.x + x, chunk_offset.y + z);
 
     auto found = loader.get_locations(chunks);
-    found.clear();
-    auto loc = vx3d::loader::chunk_location();
-    for (auto i = 1; i < 3; i++)
-        for (auto j = 1; j < 3; j++)
-        {
-            loc.x = i;
-            loc.z = j;
-            found.push_back(loc);
-            loc.x = -i;
-            loc.z = -j;
-            found.push_back(loc);
-        }
 
     ZoneNamedN(b, "Renderer::render::create_indices", true);
 
